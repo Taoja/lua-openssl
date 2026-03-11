@@ -218,7 +218,7 @@ end
 
 --- sm2加签
 --- @param data string 待签名的明文信息
---- @param id string 自定义sm2_id
+--- @param id string? 自定义sm2_id
 --- @return string 签名
 --- @return string 错误信息
 function _M:sign(data, id)
@@ -270,7 +270,7 @@ end
 --- sm2验签
 --- @param data string 待验签的明文信息
 --- @param signature string 签名
---- @param id string 自定义sm2_id
+--- @param id string? 自定义sm2_id
 --- @return boolean 是否匹配
 --- @return string 错误信息
 function _M:verify(data, signature, id)
