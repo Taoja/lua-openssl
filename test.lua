@@ -80,9 +80,21 @@ local function test_decrypt()
   end
 end
 
+local function test_sign()
+  print("test_sign")
+  local sign_ctx = sm2:new()
+  sign_ctx:import_private_from_der(base64.decode(priv))
+  local sign_data = sign_ctx:sign("hello world")
+  local very_ctx = sm2:new()
+  very_ctx:import_public_from_der(base64.decode(pub))
+  local result = very_ctx:verify("hello world", sign_data)
+  print(result)
+end
+
 test_generate_key()
 test_import_private()
 test_export()
 test_import_public()
 test_encrypt()
 test_decrypt()
+test_sign()
