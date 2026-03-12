@@ -2,7 +2,6 @@ local ffi = require "ffi"
 local err = require("openssl.err_print")
 
 ffi.cdef [[
-// 基本类型定义
 typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;
 typedef struct evp_cipher_st EVP_CIPHER;
 typedef struct ossl_lib_ctx_st OSSL_LIB_CTX;
@@ -15,11 +14,9 @@ struct ossl_param_st {
     size_t return_size;
 };
 
-// EVP_CIPHER_CTX 相关函数
 EVP_CIPHER_CTX *EVP_CIPHER_CTX_new(void);
 void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *ctx);
 
-// SM4 相关函数
 const EVP_CIPHER *EVP_sm4_ecb(void);
 const EVP_CIPHER *EVP_sm4_cbc(void);
 const EVP_CIPHER *EVP_sm4_cfb128(void);
@@ -28,7 +25,6 @@ const EVP_CIPHER *EVP_sm4_ctr(void);
 const EVP_CIPHER *EVP_sm4_ccm(void);
 const EVP_CIPHER *EVP_sm4_xts(void);
 
-// 加解密操作函数
 OSSL_PARAM OSSL_PARAM_construct_size_t(const char *key, size_t *buf);
 OSSL_PARAM OSSL_PARAM_construct_octet_string(const char *key, void *buf,
     size_t bsize);
@@ -49,7 +45,6 @@ int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl);
 
 EVP_CIPHER *EVP_CIPHER_fetch(OSSL_LIB_CTX *ctx, const char *algorithm,
     const char *properties);
-// 随机数生成
 int RAND_bytes(unsigned char *buf, int num);
 ]]
 
@@ -66,8 +61,6 @@ local MODE = {
   OFB = "ofb",
   CTR = "ctr",
   GCM = "gcm",
-  CCM = "ccm",
-  XTS = "xts"
 }
 
 _M.MODE = MODE
@@ -86,10 +79,6 @@ local function get_sm4_cipher(mode)
     return openssl.EVP_sm4_ctr()
   elseif mode == MODE.GCM then
     return openssl.EVP_CIPHER_fetch(nil, "SM4-GCM", nil)
-  elseif mode == MODE.CCM then
-    return openssl.EVP_sm4_ccm()
-  elseif mode == MODE.XTS then
-    return openssl.EVP_sm4_xts()
   else
     error("Unsupported mode: " .. tostring(mode))
   end

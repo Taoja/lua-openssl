@@ -82,53 +82,6 @@ local function test_gcm()
   else
     print("Test GCM:", plain == data1..data2..data3)
   end
-  return plain == data
 end
 
-local function test_ccm()
-  print("\n=== Testing CCM Mode ===")
-  local data = "hello world, this is a test message for CCM mode"
-  local key = sm4.generate_key(16)
-  local iv = sm4.generate_iv(12)  -- CCM 通常使用 7-13 字节 IV
-  local aad = "additional authenticated data for CCM"
-  
-  print("Plaintext:", data)
-  print("Key length:", #key)
-  print("IV length:", #iv)
-  print("AAD:", aad)
-  
-  -- 加密
-  local ctx = sm4:new(key, "ccm", iv, 16)
-  local cipher, err = ctx:encrypt(data, aad)
-  if err then
-    print("Encrypt error:", err)
-    return false
-  end
-  print("Cipher length:", #cipher)
-  
-  -- 获取标签
-  local tag, tag_err = ctx:get_tag()
-  if tag_err then
-    print("Get tag error:", tag_err)
-    return false
-  end
-  print("Tag length:", #tag)
-  
-  ctx:finish()
-  
-  -- 解密
-  local ctx2 = sm4:new(key, "ccm", iv, 16)
-  local plain, decrypt_err = ctx2:decrypt(cipher, aad, tag)
-  if decrypt_err then
-    print("Decrypt error:", decrypt_err)
-    return false
-  end
-  
-  print("Decrypted:", plain)
-  print("Test CCM:", plain == data)
-  return plain == data
-end
-
--- 运行测试
 test_gcm()
--- test_ccm()
