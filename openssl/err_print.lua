@@ -14,7 +14,11 @@ local function print()
   end
   local cb = ffi.cast("int (*)(const char *, size_t, void *)", error_callback)
   openssl.ERR_print_errors_cb(cb, nil)
-  return error_str
+  if error_str then
+    return error_str
+  else
+    return ""
+  end
 end
 
 return print

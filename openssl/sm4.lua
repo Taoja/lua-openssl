@@ -6,11 +6,18 @@ ffi.cdef [[
 typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;
 typedef struct evp_cipher_st EVP_CIPHER;
 typedef struct ossl_lib_ctx_st OSSL_LIB_CTX;
+typedef struct ossl_param_st OSSL_PARAM;
+struct ossl_param_st {
+    const char *key;
+    unsigned int data_type;
+    void *data;
+    size_t data_size;
+    size_t return_size;
+};
 
 // EVP_CIPHER_CTX 相关函数
 EVP_CIPHER_CTX *EVP_CIPHER_CTX_new(void);
 void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *ctx);
-int EVP_CIPHER_CTX_reset(EVP_CIPHER_CTX *ctx);
 
 // SM4 相关函数
 const EVP_CIPHER *EVP_sm4_ecb(void);
@@ -18,11 +25,15 @@ const EVP_CIPHER *EVP_sm4_cbc(void);
 const EVP_CIPHER *EVP_sm4_cfb128(void);
 const EVP_CIPHER *EVP_sm4_ofb(void);
 const EVP_CIPHER *EVP_sm4_ctr(void);
-const EVP_CIPHER *EVP_sm4_gcm(void);
 const EVP_CIPHER *EVP_sm4_ccm(void);
 const EVP_CIPHER *EVP_sm4_xts(void);
 
 // 加解密操作函数
+OSSL_PARAM OSSL_PARAM_construct_size_t(const char *key, size_t *buf);
+OSSL_PARAM OSSL_PARAM_construct_octet_string(const char *key, void *buf,
+    size_t bsize);
+int EVP_CIPHER_CTX_get_params(EVP_CIPHER_CTX *ctx, OSSL_PARAM params[]);
+int EVP_CIPHER_CTX_set_params(EVP_CIPHER_CTX *ctx, const OSSL_PARAM params[]);
 int EVP_EncryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher,
                        void *engine, const unsigned char *key,
                        const unsigned char *iv);
@@ -36,47 +47,11 @@ int EVP_DecryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out,
                      int *outl, const unsigned char *in, int inl);
 int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl);
 
-// AEAD 模式（GCM/CCM）相关函数
-int EVP_CIPHER_CTX_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg, void *ptr);
-
-// 参数获取函数
-int EVP_CIPHER_CTX_get_iv_length(const EVP_CIPHER_CTX *ctx);
-int EVP_CIPHER_CTX_get_key_length(const EVP_CIPHER_CTX *ctx);
-int EVP_CIPHER_CTX_get_tag_length(const EVP_CIPHER_CTX *ctx);
-
+EVP_CIPHER *EVP_CIPHER_fetch(OSSL_LIB_CTX *ctx, const char *algorithm,
+    const char *properties);
 // 随机数生成
 int RAND_bytes(unsigned char *buf, int num);
-
-// 常量定义
-int EVP_CTRL_INIT;
-int EVP_CTRL_SET_KEY_LENGTH;
-int EVP_CTRL_GET_IVLEN;
-int EVP_CTRL_GCM_SET_IVLEN;
-int EVP_CTRL_GCM_GET_TAG;
-int EVP_CTRL_GCM_SET_TAG;
-int EVP_CTRL_CCM_SET_IVLEN;
-int EVP_CTRL_CCM_GET_TAG;
-int EVP_CTRL_CCM_SET_TAG;
-int EVP_CTRL_CCM_SET_L;
-int EVP_CTRL_AEAD_SET_IVLEN;
-int EVP_CTRL_AEAD_GET_TAG;
-int EVP_CTRL_AEAD_SET_TAG;
 ]]
-
--- OpenSSL 常量定义
-local EVP_CTRL_INIT = 0x0
-local EVP_CTRL_SET_KEY_LENGTH = 0x1
-local EVP_CTRL_GET_IVLEN = 0x2
-local EVP_CTRL_GCM_SET_IVLEN = 0x8
-local EVP_CTRL_GCM_GET_TAG = 0x10
-local EVP_CTRL_GCM_SET_TAG = 0x11
-local EVP_CTRL_CCM_SET_IVLEN = 0x12
-local EVP_CTRL_CCM_GET_TAG = 0x13
-local EVP_CTRL_CCM_SET_TAG = 0x14
-local EVP_CTRL_CCM_SET_L = 0x15
-local EVP_CTRL_AEAD_SET_IVLEN = 0x16
-local EVP_CTRL_AEAD_GET_TAG = 0x17
-local EVP_CTRL_AEAD_SET_TAG = 0x18
 
 local openssl = ffi.load("crypto")
 
@@ -110,7 +85,7 @@ local function get_sm4_cipher(mode)
   elseif mode == MODE.CTR then
     return openssl.EVP_sm4_ctr()
   elseif mode == MODE.GCM then
-    return openssl.EVP_sm4_gcm()
+    return openssl.EVP_CIPHER_fetch(nil, "SM4-GCM", nil)
   elseif mode == MODE.CCM then
     return openssl.EVP_sm4_ccm()
   elseif mode == MODE.XTS then
@@ -153,18 +128,22 @@ end
 --- @param key string 私钥
 --- @param mode string? 模式枚举
 --- @param iv string? iv
---- @param tag_len string? tag
-function _M:new(key, mode, iv, tag_len)
+--- @param aad string? aad
+function _M:new(key, mode, iv, aad)
   mode = mode or MODE.CBC
   iv = iv or ""
-
   local obj = {
     key = key,
     mode = mode,
     iv = iv,
-    tag_len = tag_len or 16,     -- GCM/CCM 标签长度，默认 16 字节
-    cipher = nil
+    ctx_enc = nil,
+    ctx_dec = nil,
   }
+
+  if mode == MODE.GCM then
+    obj.aad = ffi.cast("unsigned char*", aad)
+    obj.aad_size = #aad
+  end
 
   return setmetatable(obj, self)
 end
@@ -178,10 +157,17 @@ function _M:encrypt_init()
     iv_data = ffi.cast("const unsigned char*", self.iv)
   end
 
-  -- 初始化加密上下文
   if openssl.EVP_EncryptInit_ex(ctx, cipher, nil, key_data, iv_data) <= 0 then
     openssl.EVP_CIPHER_CTX_free(ctx)
     return "Failed to initialize encryption context:" .. err()
+  end
+
+  if self.mode == MODE.GCM then
+    local outl = ffi.new("int[1]")
+    if openssl.EVP_EncryptUpdate(ctx, nil, outl, self.aad, self.aad_size) <= 0 then
+      openssl.EVP_CIPHER_CTX_free(ctx)
+      return nil, "Failed to encrypt aad data:" .. err()
+    end
   end
 
   self.ctx_enc = ctx
@@ -195,9 +181,25 @@ function _M:encrypt_finalize()
     openssl.EVP_CIPHER_CTX_free(self.ctx_enc)
     return nil, "Failed to finalize encryption:" .. err()
   end
+  
   local cipher = ffi.string(out_buf, outl[0])
+  local tag = nil
+
+  if self.mode == MODE.GCM then
+    local params = ffi.new("OSSL_PARAM[2]") 
+    local c_key = ffi.cast("unsigned char*", "tag")
+    local outtag = ffi.new("unsigned char[16]")
+    params[0] = openssl.OSSL_PARAM_construct_octet_string(c_key, outtag, 16)
+    if openssl.EVP_CIPHER_CTX_get_params(self.ctx_enc, params) <= 0 then
+      openssl.EVP_CIPHER_CTX_free(self.ctx_enc)
+      return nil, "Failed to get params:"..err()
+    end
+    tag = ffi.string(outtag, 16)
+  end
+  
   openssl.EVP_CIPHER_CTX_free(self.ctx_enc)
-  return cipher, nil
+  self.ctx_enc = nil
+  return cipher, nil, tag
 end
 
 -- 内部加密函数
@@ -225,23 +227,43 @@ function _M:decrypt_init()
     iv_data = ffi.cast("const unsigned char*", self.iv)
   end
   
-  -- 初始化加密上下文
   if openssl.EVP_DecryptInit_ex(ctx, cipher, nil, key_data, iv_data) <= 0 then
     openssl.EVP_CIPHER_CTX_free(ctx)
     return "Failed to initialize decryption context:" .. err()
+  end
+
+  if self.mode == MODE.GCM then
+    local outl = ffi.new("int[1]")
+    if openssl.EVP_DecryptUpdate(ctx, nil, outl, self.aad, self.aad_size) <= 0 then
+      openssl.EVP_CIPHER_CTX_free(ctx)
+      return nil, "Failed to decrypt aad data:" .. err()
+    end
   end
 
   self.ctx_dec = ctx
   return nil
 end
 
-function _M:decrypt_finalize()
+function _M:decrypt_finalize(tag)
   local outl = ffi.new("int[1]")
   local out_buf = ffi.new("unsigned char[?]", 16)
+
+  if self.mode == MODE.GCM then
+    local params = ffi.new("OSSL_PARAM[2]") 
+    local c_key = ffi.cast("unsigned char*", "tag")
+    local intag = ffi.cast("unsigned char*", tag)
+    params[0] = openssl.OSSL_PARAM_construct_octet_string(c_key, intag, #tag)
+    if openssl.EVP_CIPHER_CTX_set_params(self.ctx_dec, params) <= 0 then
+      openssl.EVP_CIPHER_CTX_free(self.ctx_dec)
+      return nil, "Failed to set params:"..err()
+    end
+  end
+  
   if openssl.EVP_DecryptFinal_ex(self.ctx_dec, out_buf, outl) <= 0 then
     openssl.EVP_CIPHER_CTX_free(self.ctx_dec)
     return nil, "Failed to finalize encryption:" .. err()
   end
+  
   local plain = ffi.string(out_buf, outl[0])
   openssl.EVP_CIPHER_CTX_free(self.ctx_dec)
   return plain, nil
@@ -261,15 +283,14 @@ function _M:decrypt_internal(ciphertext)
   end
 
   local plain = ffi.string(out_buf, outl[0])
-  return plain
+  return plain, nil
 end
 
 --- sm4加密
 --- @param plaintext string 需要加密的明文字符串
---- @param aad string? aad GCM/CCM附加认证信息
 --- @return string 加密后的密文信息
 --- @return string 错误信息
-function _M:encrypt(plaintext, aad)
+function _M:encrypt(plaintext)
   -- 初始化加密上下文
   if not self.ctx_enc then
     local errorMsg = self:encrypt_init()
@@ -277,15 +298,15 @@ function _M:encrypt(plaintext, aad)
       return nil, errorMsg
     end
   end
-
+  
   -- 加密
   local ciphertext, errorMsg = self:encrypt_internal(plaintext)
   if errorMsg then
     return nil, errorMsg
   end
-
+  
   -- 结束
-  if self.mode ~= MODE.CTR then
+  if self.mode ~= MODE.CTR and self.mode ~= MODE.GCM then
     local finaltext, errorMsg = self:encrypt_finalize()
     if errorMsg then
       return nil, errorMsg
@@ -308,15 +329,15 @@ function _M:decrypt(ciphertext)
       return nil, errorMsg
     end
   end
-
-  -- 加密
+  
+  -- 解密
   local plaintext, errorMsg = self:decrypt_internal(ciphertext)
   if errorMsg then
     return nil, errorMsg
   end
 
   -- 结束
-  if self.mode ~= MODE.CTR then
+  if self.mode ~= MODE.CTR and self.mode ~= MODE.GCM then
     local finaltext, errorMsg = self:decrypt_finalize()
     if errorMsg then
       return nil, errorMsg
@@ -327,14 +348,20 @@ function _M:decrypt(ciphertext)
   return plaintext, nil
 end
 
-function _M:finish()
+function _M:finish(inTag)
   if self.ctx_enc then
-    openssl.EVP_CIPHER_CTX_free(self.ctx_enc)
-    self.ctx_enc = nil
+    local finaltext, errorMsg, tag = self:encrypt_finalize()
+    if errorMsg then
+      return nil, errorMsg
+    end
+    return tag, nil
   end
   if self.ctx_dec then
-    openssl.EVP_CIPHER_CTX_free(self.ctx_dec)
-    self.ctx_dec = nil
+    local finaltext, errorMsg = self:decrypt_finalize(inTag)
+    if errorMsg then
+      return errorMsg
+    end
+    return nil
   end
 end
 
