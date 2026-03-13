@@ -24,7 +24,7 @@ local ctx = sm2:new()
 
 ### 创建秘钥
 ```lua
-local err = sm2:generate_key()
+local err = ctx:generate_key()
 ```
 
 ### 导出der格式秘钥
