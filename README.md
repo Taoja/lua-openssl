@@ -121,3 +121,19 @@ local ctx_dec = sm4:new(key, "gcm", iv, aad)
 local plain, err = ctx_dec:decrypt(cipher1..cipher2..cipher3)
 local err = ctx_dec:finish(tag) -- 报错则表示完整性验证失败
 ```
+
+## 编码
+
+### base64
+```lua
+local base64 = require("openssl.base64")
+local encode = base64.encode(data)
+local deocde, err = base64.decode(encode)
+```
+
+### hex
+```lua
+local hex = require("openssl.hex")
+local encode = hex.encode(data)
+local decode = hex.decode(encode)
+```
