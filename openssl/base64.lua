@@ -10,7 +10,7 @@ local openssl = ffi.load("crypto")
 
 local base64 = {}
 
-function trim_trailing_zeros_simple(buf, len)
+function trim_trailing_zeros(buf, len)
     if len == 0 then return 0 end
     local pos = buf + len        -- 指向末尾之后
     local base = buf
@@ -37,7 +37,7 @@ function base64.decode(b64)
   if ret < 0 then
     return nil, "Failed base64 decode:" .. err()
   end
-  local real_len = trim_trailing_zeros_simple(out_buf, ret)
+  local real_len = trim_trailing_zeros(out_buf, ret)
   return ffi.string(out_buf, real_len), nil
 end
 
