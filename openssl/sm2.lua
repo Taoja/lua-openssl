@@ -70,7 +70,7 @@ end
 
 --- 设置签名验签sm2id
 --- @param id string sm2_id
---- @return string 错误信息
+--- @return string? 错误信息
 function _M:set_sm2_id(id)
   if type(id) ~= "string" then
     return "ID must be a string"
@@ -80,7 +80,7 @@ function _M:set_sm2_id(id)
 end
 
 --- 生成sm2公私钥对
---- @return string 错误信息
+--- @return string? 错误信息
 function _M:generate_key()
   local genctx = openssl.EVP_PKEY_CTX_new_from_name(nil, "SM2", nil)
   if genctx == nil then
@@ -107,8 +107,8 @@ function _M:generate_key()
 end
 
 --- 导出der格式公钥
---- @return string der格式公钥字符串
---- @return string 错误信息
+--- @return string? der格式公钥字符串
+--- @return string? 错误信息
 function _M:export_public_to_der()
   if self.key[0] == ffi.NULL then
     return nil, "no key loaded"
@@ -121,8 +121,8 @@ function _M:export_public_to_der()
 end
 
 --- 导出der格式私钥
---- @return string der格式私钥字符串
---- @return string 错误信息
+--- @return string? der格式私钥字符串
+--- @return string? 错误信息
 function _M:export_private_to_der()
   if self.key[0] == ffi.NULL then
     return nil, "no key loaded"
@@ -136,7 +136,7 @@ end
 
 --- 导入der格式公钥
 --- @param str string der格式公钥字符串
---- @return string 错误信息
+--- @return string? 错误信息
 function _M:import_public_from_der(str)
   if type(str) ~= "string" then
     return "der type error"
@@ -153,7 +153,7 @@ end
 
 --- 导入der格式私钥
 --- @param str string der格式私钥字符串
---- @return string 错误信息
+--- @return string? 错误信息
 function _M:import_private_from_der(str)
   if type(str) ~= "string" then
     return "der type error"
@@ -170,8 +170,8 @@ end
 
 --- sm2加密
 --- @param str string 需要加密的明文信息
---- @return string 加密后密文信息
---- @return string 错误信息
+--- @return string? 加密后密文信息
+--- @return string? 错误信息
 function _M:encrypt(str)
   if self.key[0] == ffi.NULL then
     return nil, "no key loaded"
@@ -194,8 +194,8 @@ end
 
 --- sm2解密
 --- @param str string 需要解密的密文信息
---- @return string 解密后明文信息
---- @return string 错误信息
+--- @return string? 解密后明文信息
+--- @return string? 错误信息
 function _M:decrypt(str)
   if self.key[0] == ffi.NULL then
     return nil, "no key loaded"
@@ -219,8 +219,8 @@ end
 --- sm2加签
 --- @param data string 待签名的明文信息
 --- @param id string? 自定义sm2_id
---- @return string 签名
---- @return string 错误信息
+--- @return string? 签名
+--- @return string? 错误信息
 function _M:sign(data, id)
   if self.key[0] == ffi.NULL then
     return nil, "no key loaded"
@@ -271,8 +271,8 @@ end
 --- @param data string 待验签的明文信息
 --- @param signature string 签名
 --- @param id string? 自定义sm2_id
---- @return boolean 是否匹配
---- @return string 错误信息
+--- @return boolean? 是否匹配
+--- @return string? 错误信息
 function _M:verify(data, signature, id)
   if self.key[0] == ffi.NULL then
     return nil, "no key loaded"

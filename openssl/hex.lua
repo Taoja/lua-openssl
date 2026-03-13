@@ -1,5 +1,5 @@
 local ffi = require("ffi")
-local err = require("openssl.err_print")
+
 ffi.cdef [[
   unsigned char *ossl_buf2hexstr_sep(const char *str, long buflen,
     const char sep);

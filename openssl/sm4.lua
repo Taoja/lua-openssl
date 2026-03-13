@@ -86,8 +86,8 @@ end
 
 --- 生成随机秘钥
 --- @param length number? 秘钥长度，默认16
---- @return string 私钥字符串
---- @return string 错误信息
+--- @return string? 私钥字符串
+--- @return string? 错误信息
 function _M.generate_key(length)
   if not length then length = 16 end
   if length ~= 16 and length ~= 24 and length ~= 32 then
@@ -102,8 +102,8 @@ end
 
 --- 生成随机iv
 --- @param length number? iv长度，默认16
---- @return string iv字符串
---- @return string 错误信息
+--- @return string? iv字符串
+--- @return string? 错误信息
 function _M.generate_iv(length)
   if not length then length = 16 end
   local iv = ffi.new("unsigned char[?]", length)
@@ -277,8 +277,8 @@ end
 
 --- sm4加密
 --- @param plaintext string 需要加密的明文字符串
---- @return string 加密后的密文信息
---- @return string 错误信息
+--- @return string? 加密后的密文信息
+--- @return string? 错误信息
 function _M:encrypt(plaintext)
   -- 初始化加密上下文
   if not self.ctx_enc then
@@ -308,8 +308,8 @@ end
 
 --- sm4解密
 --- @param ciphertext string 需要解密的密文字符串
---- @return string 解密后的明文信息
---- @return string 错误信息
+--- @return string? 解密后的明文信息
+--- @return string? 错误信息
 function _M:decrypt(ciphertext)
   -- 初始化解密上下文
   if not self.ctx_dec then
