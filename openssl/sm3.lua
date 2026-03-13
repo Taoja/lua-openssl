@@ -28,7 +28,7 @@ function _M.hash(data)
     return nil, "Failed do digest:" .. err()
   end
 
-  return ffi.string(out_buf, out_len[0])
+  return ffi.string(out_buf, out_len[0]), nil
 end
 
 return _M
