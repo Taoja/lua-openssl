@@ -6,9 +6,7 @@
 
 其中sm4支持ecb、cbc、cfb、ofb、ctr、gcm，并且都只支持pkcs7补位
 
-sm2公钥私钥导入导出使用Der格式
-
-所有涉及字符串的输入输出都不含编码格式（hex或者base64）
+SM2 公钥、私钥和密文的外部输入输出统一使用 Base64 文本格式，不再支持 PEM。
 
 ## SM2
 
@@ -27,16 +25,16 @@ local ctx = sm2:new()
 local err = ctx:generate_key()
 ```
 
-### 导出der格式秘钥
+### 导出 Base64 格式秘钥
 ```lua
-local pub, err = ctx:export_public_to_der()
-local priv, err = ctx:export_private_to_der()
+local pub_b64, err = ctx:export_public()
+local priv_b64, err = ctx:export_private()
 ```
 
-### 导入der格式秘钥
+### 导入 Base64 格式秘钥
 ```lua
-local err = ctx:import_public_from_der(pub)
-local err = ctx:import_private_from_der(priv)
+local err = ctx:import_public(pub_b64)
+local err = ctx:import_private(priv_b64)
 ```
 
 ### 加解密

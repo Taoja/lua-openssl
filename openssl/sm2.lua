@@ -1,5 +1,6 @@
 local ffi = require "ffi"
 local err = require("openssl.err_print")
+local base64 = require("openssl.base64")
 
 ffi.cdef [[
 typedef struct evp_pkey_st EVP_PKEY;
@@ -9,6 +10,7 @@ typedef struct ossl_lib_ctx_st OSSL_LIB_CTX;
 typedef struct ec_key_st EC_KEY;
 typedef struct evp_md_ctx_st EVP_MD_CTX;
 typedef struct evp_md_st EVP_MD;
+typedef struct evp_cipher_st EVP_CIPHER;
 
 void EVP_PKEY_CTX_free(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_keygen_init(EVP_PKEY_CTX *ctx);
@@ -16,6 +18,7 @@ int EVP_PKEY_CTX_set_ec_paramgen_curve_nid(EVP_PKEY_CTX *ctx, int nid);
 int EVP_PKEY_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey);
 EVP_PKEY *d2i_PrivateKey(int type, EVP_PKEY **a, const unsigned char **pp,
     long length);
+EVP_PKEY *d2i_AutoPrivateKey(EVP_PKEY **a, const unsigned char **pp, long length);
 int i2d_PKCS8PrivateKey(const EVP_PKEY *a, unsigned char **pp);
 EVP_PKEY *d2i_PUBKEY(EVP_PKEY **a, const unsigned char **in, long len);
 int i2d_PUBKEY(const EVP_PKEY *a, unsigned char **out);
@@ -61,11 +64,87 @@ _M.__index = _M
 
 local DEFAULT_SM2_ID = "1234567812345678"
 
+local function trim_string(s)
+  if type(s) ~= "string" then
+    return s
+  end
+  return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function normalize_binary_input(data)
+  if type(data) ~= "string" then
+    return nil, "input must be a string"
+  end
+
+  local str = trim_string(data)
+  if str == "" then
+    return nil, "empty input"
+  end
+
+  if str:find("-----BEGIN") ~= nil then
+    return nil, "unsupported input format; use base64 text instead"
+  end
+
+  if str:find("%z") ~= nil then
+    return str, nil
+  end
+
+  local compact = str:gsub("%s+", "")
+  if compact:match("^[A-Za-z0-9%+%/%=]+$") and #compact % 4 == 0 and compact:len() > 0 then
+    local decoded, base64_err = base64.decode(compact)
+    if decoded ~= nil and #decoded > 0 and base64_err == nil then
+      return decoded, nil
+    end
+  end
+
+  return str, nil
+end
+
 --- 初始化实例
 function _M:new()
-  self.key = ffi.new("EVP_PKEY*[1]")
-  self.sm2_id = DEFAULT_SM2_ID
-  return setmetatable({}, self)
+  local obj = setmetatable({}, self)
+  obj.key = ffi.new("EVP_PKEY*[1]")
+  obj.key[0] = ffi.NULL
+  obj.sm2_id = DEFAULT_SM2_ID
+  return obj
+end
+
+function _M:import_private(data)
+  local normalized, normalize_err = normalize_binary_input(data)
+  if normalize_err then
+    return normalize_err
+  end
+
+  local input = ffi.cast("const unsigned char*", normalized)
+  local input_ptr = ffi.new("const unsigned char*[1]", input)
+
+  local key = openssl.d2i_AutoPrivateKey(nil, input_ptr, #normalized)
+  if key == ffi.NULL then
+    local fallback_ptr = ffi.new("const unsigned char*[1]", input)
+    key = openssl.d2i_PrivateKey(EVP_PKEY_SM2, nil, fallback_ptr, #normalized)
+  end
+
+  self.key[0] = key
+  if self.key[0] == ffi.NULL then
+    return "import private key error:" .. err()
+  end
+  return nil
+end
+
+function _M:import_public(data)
+  local normalized, normalize_err = normalize_binary_input(data)
+  if normalize_err then
+    return normalize_err
+  end
+
+  local input = ffi.cast("const unsigned char*", normalized)
+  local input_ptr = ffi.new("const unsigned char*[1]", input)
+  local key = openssl.d2i_PUBKEY(nil, input_ptr, #normalized)
+  self.key[0] = key
+  if self.key[0] == ffi.NULL then
+    return "import publick key error:" .. err()
+  end
+  return nil
 end
 
 --- 设置签名验签sm2id
@@ -120,6 +199,19 @@ function _M:export_public_to_der()
   return ffi.string(buf, len), nil
 end
 
+function _M:export_public(format)
+  local der, der_err = self:export_public_to_der()
+  if der_err ~= nil then
+    return nil, der_err
+  end
+  local fmt = format or "base64"
+  if fmt == "base64" then
+    return base64.encode(der), nil
+  else
+    return nil, "unsupported public key format: use base64"
+  end
+end
+
 --- 导出der格式私钥
 --- @return string? der格式私钥字符串
 --- @return string? 错误信息
@@ -134,38 +226,17 @@ function _M:export_private_to_der()
   return ffi.string(buf, len), nil
 end
 
---- 导入der格式公钥
---- @param str string der格式公钥字符串
---- @return string? 错误信息
-function _M:import_public_from_der(str)
-  if type(str) ~= "string" then
-    return "der type error"
+function _M:export_private(format)
+  local der, der_err = self:export_private_to_der()
+  if der_err ~= nil then
+    return nil, der_err
   end
-  local input = ffi.cast("const unsigned char*", str)
-  local input_ptr = ffi.new("const unsigned char*[1]", input)
-  local key = openssl.d2i_PUBKEY(nil, input_ptr, #str)
-  self.key[0] = key
-  if self.key[0] == ffi.NULL then
-    return "import publick key error:" .. err()
+  local fmt = format or "base64"
+  if fmt == "base64" then
+    return base64.encode(der), nil
+  else
+    return nil, "unsupported private key format: use base64"
   end
-  return nil
-end
-
---- 导入der格式私钥
---- @param str string der格式私钥字符串
---- @return string? 错误信息
-function _M:import_private_from_der(str)
-  if type(str) ~= "string" then
-    return "der type error"
-  end
-  local input = ffi.cast("const unsigned char*", str)
-  local input_ptr = ffi.new("const unsigned char*[1]", input)
-  local key = openssl.d2i_PrivateKey(EVP_PKEY_SM2, nil, input_ptr, #str)
-  self.key[0] = key
-  if self.key[0] == ffi.NULL then
-    return "import private key error:" .. err()
-  end
-  return nil
 end
 
 --- sm2加密
@@ -177,18 +248,26 @@ function _M:encrypt(str)
     return nil, "no key loaded"
   end
   local ctx = openssl.EVP_PKEY_CTX_new(self.key[0], nil)
+  if ctx == nil then
+    return nil, "EVP_PKEY_CTX_new fail:" .. err()
+  end
   local out_len = ffi.new("size_t[1]")
   local input = ffi.cast("const unsigned char*", str)
   if openssl.EVP_PKEY_encrypt_init(ctx) <= 0 then
+    openssl.EVP_PKEY_CTX_free(ctx)
     return nil, "encrypt init fail:" .. err()
   end
   if openssl.EVP_PKEY_encrypt(ctx, nil, out_len, input, #str) <= 0 then
+    openssl.EVP_PKEY_CTX_free(ctx)
     return nil, "get encrypt len fail:" .. err()
   end
   local out = ffi.new("unsigned char[?]", out_len[0])
   if openssl.EVP_PKEY_encrypt(ctx, out, out_len, input, #str) <= 0 then
+    openssl.EVP_PKEY_CTX_free(ctx)
     return nil, "encrypt fail:" .. err()
   end
+  openssl.EVP_PKEY_CTX_free(ctx)
+
   return ffi.string(out, out_len[0]), nil
 end
 
@@ -200,19 +279,33 @@ function _M:decrypt(str)
   if self.key[0] == ffi.NULL then
     return nil, "no key loaded"
   end
+
+  local normalized, normalize_err = normalize_binary_input(str)
+  if normalize_err then
+    return nil, normalize_err
+  end
+
   local ctx = openssl.EVP_PKEY_CTX_new(self.key[0], nil)
+  if ctx == nil then
+    return nil, "EVP_PKEY_CTX_new fail:" .. err()
+  end
+
   local out_len = ffi.new("size_t[1]")
-  local input = ffi.cast("const unsigned char*", str)
+  local input = ffi.cast("const unsigned char*", normalized)
   if openssl.EVP_PKEY_decrypt_init(ctx) <= 0 then
+    openssl.EVP_PKEY_CTX_free(ctx)
     return nil, "decrypt init fail:" .. err()
   end
-  if openssl.EVP_PKEY_decrypt(ctx, nil, out_len, input, #str) <= 0 then
+  if openssl.EVP_PKEY_decrypt(ctx, nil, out_len, input, #normalized) <= 0 then
+    openssl.EVP_PKEY_CTX_free(ctx)
     return nil, "get decrypt len fail:" .. err()
   end
   local out = ffi.new("unsigned char[?]", out_len[0])
-  if openssl.EVP_PKEY_decrypt(ctx, out, out_len, input, #str) <= 0 then
+  if openssl.EVP_PKEY_decrypt(ctx, out, out_len, input, #normalized) <= 0 then
+    openssl.EVP_PKEY_CTX_free(ctx)
     return nil, "decrypt fail:" .. err()
   end
+  openssl.EVP_PKEY_CTX_free(ctx)
   return ffi.string(out, out_len[0]), nil
 end
 
