@@ -52,7 +52,7 @@ unsigned long OpenSSL_version_num(void);
 local openssl = ffi.load("crypto")
 
 local _M = {
-  Version = '1.0.0',
+  Version = '1.0.1',
   Openssl_Version = openssl.OpenSSL_version_num()
 }
 _M.__index = _M

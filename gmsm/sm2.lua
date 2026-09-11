@@ -61,7 +61,7 @@ local EVP_PKEY_SM2 = NID_sm2
 local openssl = ffi.load("crypto")
 
 local _M = {
-  Version = '1.0.0',
+  Version = '1.0.1',
   Openssl_Version = openssl.OpenSSL_version_num()
 }
 _M.__index = _M
