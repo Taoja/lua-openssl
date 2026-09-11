@@ -19,7 +19,7 @@ int EVP_PKEY_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey);
 EVP_PKEY *d2i_PrivateKey(int type, EVP_PKEY **a, const unsigned char **pp,
     long length);
 EVP_PKEY *d2i_AutoPrivateKey(EVP_PKEY **a, const unsigned char **pp, long length);
-int i2d_PKCS8PrivateKey(const EVP_PKEY *a, unsigned char **pp);
+int i2d_PrivateKey(const EVP_PKEY *a, unsigned char **pp);
 EVP_PKEY *d2i_PUBKEY(EVP_PKEY **a, const unsigned char **in, long len);
 int i2d_PUBKEY(const EVP_PKEY *a, unsigned char **out);
 int EVP_PKEY_encrypt_init(EVP_PKEY_CTX *ctx);
@@ -223,10 +223,11 @@ function _M:export_private_to_der()
   if self.key[0] == ffi.NULL then
     return nil, "no key loaded"
   end
-  local len = openssl.i2d_PKCS8PrivateKey(self.key[0], nil)
+
+  local len = openssl.i2d_PrivateKey(self.key[0], nil)
   local buf = ffi.new("unsigned char[?]", len)
   local buf_ptr = ffi.new("unsigned char*[1]", buf)
-  openssl.i2d_PKCS8PrivateKey(self.key[0], buf_ptr)
+  openssl.i2d_PrivateKey(self.key[0], buf_ptr)
   return ffi.string(buf, len), nil
 end
 
