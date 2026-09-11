@@ -1,6 +1,6 @@
 # lua-openssl
 
-基于OpenSSL3.5.5版本的国密实现
+基于OpenSSL的国密实现
 
 当前支持sm2、sm3、sm4
 

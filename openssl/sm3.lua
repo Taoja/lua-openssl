@@ -8,11 +8,15 @@ ffi.cdef [[
     const EVP_MD *EVP_sm3(void);
     int EVP_Digest(const void *data, size_t count, unsigned char *md, unsigned int *size,
                    const EVP_MD *type, void *impl);
+    unsigned long OpenSSL_version_num(void);
 ]]
 
 local openssl = ffi.load("crypto")
 
-local _M = {}
+local _M = {
+  Version = '1.0.0',
+  Openssl_Version = openssl.OpenSSL_version_num()
+}
 
 _M.DIGEST_LENGTH = 32
 

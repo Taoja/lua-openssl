@@ -53,13 +53,17 @@ int EVP_DigestVerifyInit(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
 int EVP_DigestVerifyUpdate(EVP_MD_CTX *ctx, const void *d, size_t cnt);
 int EVP_DigestVerifyFinal(EVP_MD_CTX *ctx, const unsigned char *sig, size_t siglen);
 int EVP_PKEY_CTX_set1_id(EVP_PKEY_CTX *ctx, const void *id, size_t id_len);
+unsigned long OpenSSL_version_num(void);
 ]]
 
 local NID_sm2 = ffi.cast("int", 1172)
 local EVP_PKEY_SM2 = NID_sm2
 local openssl = ffi.load("crypto")
 
-local _M = { Version = '3.5.5' }
+local _M = {
+  Version = '1.0.0',
+  Openssl_Version = openssl.OpenSSL_version_num()
+}
 _M.__index = _M
 
 local DEFAULT_SM2_ID = "1234567812345678"

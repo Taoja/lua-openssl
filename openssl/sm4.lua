@@ -46,11 +46,15 @@ int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl);
 EVP_CIPHER *EVP_CIPHER_fetch(OSSL_LIB_CTX *ctx, const char *algorithm,
     const char *properties);
 int RAND_bytes(unsigned char *buf, int num);
+unsigned long OpenSSL_version_num(void);
 ]]
 
 local openssl = ffi.load("crypto")
 
-local _M = { Version = '3.5.5' }
+local _M = {
+  Version = '1.0.0',
+  Openssl_Version = openssl.OpenSSL_version_num()
+}
 _M.__index = _M
 
 -- SM4 模式枚举
