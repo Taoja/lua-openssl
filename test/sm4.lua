@@ -1,4 +1,4 @@
-local sm4 = require("openssl.sm4")
+local sm4 = require("gmsm.sm4")
 local function test_ecb()
   local data = "hello world"
   local key = sm4.generate_key(16)

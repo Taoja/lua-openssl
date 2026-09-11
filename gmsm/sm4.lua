@@ -1,5 +1,5 @@
 local ffi = require "ffi"
-local err = require("openssl.err_print")
+local err = require("gmsm.err_print")
 
 ffi.cdef [[
 typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;

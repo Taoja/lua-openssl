@@ -1,5 +1,5 @@
 local ffi = require("ffi")
-local err = require("openssl.err_print")
+local err = require("gmsm.err_print")
 
 ffi.cdef [[
   int EVP_EncodeBlock(unsigned char *t, const unsigned char *f, int n);

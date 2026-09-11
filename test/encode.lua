@@ -1,5 +1,5 @@
-local base64 = require("openssl.base64")
-local hex = require("openssl.hex")
+local base64 = require("gmsm.base64")
+local hex = require("gmsm.hex")
 
 local data = "hello world"
 local data_base64 = base64.encode(data)

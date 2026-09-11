@@ -1,6 +1,6 @@
 local ffi = require "ffi"
-local err = require("openssl.err_print")
-local base64 = require("openssl.base64")
+local err = require("gmsm.err_print")
+local base64 = require("gmsm.base64")
 
 ffi.cdef [[
 typedef struct evp_pkey_st EVP_PKEY;

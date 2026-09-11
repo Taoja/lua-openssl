@@ -1,4 +1,4 @@
-local sm2 = require("openssl.sm2")
+local sm2 = require("gmsm.sm2")
 
 local self_plain = "hello-from-lua-sm2"
 
