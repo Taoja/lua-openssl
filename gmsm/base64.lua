@@ -1,4 +1,5 @@
 local ffi = require("ffi")
+local load_any = require("gmsm.load_any")
 local err = require("gmsm.err_print")
 
 ffi.cdef [[
@@ -6,7 +7,7 @@ ffi.cdef [[
   int EVP_DecodeBlock(unsigned char *t, const unsigned char *f, int n);
 ]]
 
-local openssl = ffi.load("crypto")
+local openssl = load_any()
 
 local base64 = {}
 

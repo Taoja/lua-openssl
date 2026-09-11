@@ -1,4 +1,5 @@
 local ffi = require "ffi"
+local load_any = require("gmsm.load_any")
 local err = require("gmsm.err_print")
 local base64 = require("gmsm.base64")
 
@@ -58,7 +59,7 @@ unsigned long OpenSSL_version_num(void);
 
 local NID_sm2 = ffi.cast("int", 1172)
 local EVP_PKEY_SM2 = NID_sm2
-local openssl = ffi.load("crypto")
+local openssl = load_any()
 
 local _M = {
   Version = '1.0.1',

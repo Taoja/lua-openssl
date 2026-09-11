@@ -1,5 +1,6 @@
 -- sm3.lua
 local ffi = require("ffi")
+local load_any = require("gmsm.load_any")
 local err = require("gmsm.err_print")
 
 ffi.cdef [[
@@ -11,7 +12,7 @@ ffi.cdef [[
     unsigned long OpenSSL_version_num(void);
 ]]
 
-local openssl = ffi.load("crypto")
+local openssl = load_any()
 
 local _M = {
   Version = '1.0.1',
