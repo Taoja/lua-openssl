@@ -12,7 +12,7 @@ SM2 公钥、私钥和密文的外部输入输出统一使用 Base64 文本格�
 
 ### 引入
 ```lua
-local sm2 = require("openssl.sm2")
+local sm2 = require("resty.gmsm.sm2")
 ```
 
 ### 初始化上下文
@@ -54,7 +54,7 @@ local boolean, err = ctx:verify(data, signtext, id?)
 
 ### 引入
 ```lua
-local sm3 = require("openssl.sm3")
+local sm3 = require("resty.gmsm.sm3")
 ```
 
 ### 获取哈希
@@ -66,7 +66,7 @@ local hash, err = sm3.hash(data)
 
 ### 引入
 ```lua
-local sm4 = require("openssl.sm4")
+local sm4 = require("resty.gmsm.sm4")
 ```
 
 ### 生成秘钥/iv
@@ -124,14 +124,14 @@ local err = ctx_dec:finish(tag) -- 报错则表示完整性验证失败
 
 ### base64
 ```lua
-local base64 = require("openssl.base64")
+local base64 = require("resty.gmsm.base64")
 local encode = base64.encode(data)
 local deocde, err = base64.decode(encode)
 ```
 
 ### hex
 ```lua
-local hex = require("openssl.hex")
+local hex = require("resty.gmsm.hex")
 local encode = hex.encode(data)
 local decode = hex.decode(encode)
 ```

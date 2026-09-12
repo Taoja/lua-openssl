@@ -1,6 +1,6 @@
 local ffi = require "ffi"
-local load_any = require("gmsm.load_any")
-local err = require("gmsm.err_print")
+local load_any = require("resty.gmsm.load_any")
+local err = require("resty.gmsm.err_print")
 
 ffi.cdef [[
 typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;
@@ -47,14 +47,14 @@ int EVP_DecryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl);
 EVP_CIPHER *EVP_CIPHER_fetch(OSSL_LIB_CTX *ctx, const char *algorithm,
     const char *properties);
 int RAND_bytes(unsigned char *buf, int num);
-unsigned long OpenSSL_version_num(void);
+const char *OpenSSL_version(int);
 ]]
 
 local openssl = load_any()
 
 local _M = {
   Version = '1.0.1',
-  Openssl_Version = openssl.OpenSSL_version_num()
+  Openssl_Version = ffi.string(openssl.OpenSSL_version(0))
 }
 _M.__index = _M
 

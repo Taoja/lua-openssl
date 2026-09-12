@@ -1,7 +1,7 @@
 -- sm3.lua
 local ffi = require("ffi")
-local load_any = require("gmsm.load_any")
-local err = require("gmsm.err_print")
+local load_any = require("resty.gmsm.load_any")
+local err = require("resty.gmsm.err_print")
 
 ffi.cdef [[
     typedef struct evp_md_st EVP_MD;

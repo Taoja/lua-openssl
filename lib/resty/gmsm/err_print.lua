@@ -1,5 +1,5 @@
 local ffi = require "ffi"
-local load_any = require("gmsm.load_any")
+local load_any = require("resty.gmsm.load_any")
 
 ffi.cdef [[
 void ERR_print_errors_cb(int (*cb)(const char *str, size_t len, void *u), void *u);

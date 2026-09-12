@@ -1,5 +1,5 @@
 local ffi = require("ffi")
-local load_any = require("gmsm.load_any")
+local load_any = require("resty.gmsm.load_any")
 
 ffi.cdef [[
   char *OPENSSL_buf2hexstr(const unsigned char *str, long buflen);
