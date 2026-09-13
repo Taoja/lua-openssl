@@ -16,7 +16,7 @@ jobs:
 
     env:
       OPENSSL_VERSION: "3.6.3"
-      OPENRESTY_VERSION: "1.27.1.2"
+      OPENRESTY_VERSION: "1.25.3.2"
       OPENSSL_PREFIX: "/home/runner/opt/openssl-3.6.3"
       OPENRESTY_PREFIX: "/home/runner/opt/openresty"
 
