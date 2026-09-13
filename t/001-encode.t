@@ -1,11 +1,4 @@
-use strict;
-use warnings;
-
-use Test::Nginx::Socket::Lua;
-
-repeat_each(1);
-plan tests => repeat_each() * blocks();
-no_shuffle();
+use Test::Nginx::Socket 'no_plan';
 run_tests();
 
 __DATA__
