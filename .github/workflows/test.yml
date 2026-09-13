@@ -17,7 +17,7 @@ jobs:
     env:
       OPENSSL_VERSION: "3.6.3"
       OPENRESTY_VERSION: "1.27.1.2"
-      OPENSSL_PREFIX: "/home/runner/opt/openssl-3.6.3"   # 新增
+      OPENSSL_PREFIX: "/home/runner/opt/openssl-3.6.3"
       OPENRESTY_PREFIX: "/home/runner/opt/openresty"
 
     steps:
@@ -28,7 +28,8 @@ jobs:
           set -eux
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential ca-certificates curl perl cpanminus libipc-run-perl ccache
+            build-essential ca-certificates curl perl \
+            cpanminus libipc-run-perl ccache
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -38,13 +39,13 @@ jobs:
           create-symlink: true
           evict-old-files: 'job'
 
-      # OpenSSL 单独缓存：key 只带 OpenSSL 版本，升 OpenResty 时不重编
+      # ---------- OpenSSL（独立缓存，升 OpenResty 时不重编） ----------
       - name: Cache OpenSSL
         id: cache-ssl
         uses: actions/cache@v4
         with:
           path: /home/runner/opt/openssl-3.6.3
-          key: ssl-${{ runner.os }}-${{ env.OPENSSL_VERSION }}
+          key: ssl-${{ runner.os }}-${{ env.OPENSSL_VERSION }}-shared
 
       - name: Build shared OpenSSL
         if: steps.cache-ssl.outputs.cache-hit != 'true'
@@ -52,6 +53,7 @@ jobs:
           set -eux
           mkdir -p "${RUNNER_TEMP}/ssl-build"
           cd "${RUNNER_TEMP}/ssl-build"
+
           export PATH="/usr/lib/ccache:$PATH"
           export CCACHE_COMPILERCHECK=content
           export CCACHE_SLOPPINESS=time_macros
@@ -62,29 +64,51 @@ jobs:
           tar -xzf openssl.tar.gz
           cd "openssl-${OPENSSL_VERSION}"
 
-          # --libdir=lib 强制固定为 lib，避免 x86_64 上落到 lib64 的不确定性
+          # 关键三点：
+          #   1. shared          —— 必须产出 libcrypto.so，FFI 才能 dlopen
+          #   2. '-Wl,-rpath,$(LIBRPATH)' —— 单引号，让 make 展开；否则 openssl 会链到系统库
+          #   3. --enable-new-dtags        —— 生成 RUNPATH，保证 LD_LIBRARY_PATH 能覆盖
           ./Configure \
             --prefix="$OPENSSL_PREFIX" \
             --openssldir="$OPENSSL_PREFIX/ssl" \
             --libdir=lib \
-            shared
+            shared \
+            '-Wl,-rpath,$(LIBRPATH)' \
+            -Wl,--enable-new-dtags
+
           make -j"$(nproc)"
           make install_sw install_ssldirs
-          "$OPENSSL_PREFIX/bin/openssl" version
+          ccache -s
 
+      # 无论是否命中缓存，都做一次硬校验（缓存内容可能是坏的）
+      - name: Assert OpenSSL build
+        run: |
+          set -eux
+          "$OPENSSL_PREFIX/bin/openssl" version
+          readelf -d "$OPENSSL_PREFIX/lib/libcrypto.so.3" | grep -E 'RPATH|RUNPATH'
+          readelf -d "$OPENSSL_PREFIX/bin/openssl"        | grep -E 'RPATH|RUNPATH'
+          ldd "$OPENSSL_PREFIX/bin/openssl" | grep -E 'libcrypto|libssl' \
+            | grep -q "$OPENSSL_PREFIX" \
+            || { echo "::error::openssl 仍链到系统库"; ldd "$OPENSSL_PREFIX/bin/openssl"; exit 1; }
+          # 我们的目标能力：SM4-GCM（3.3+ 才有）
+          "$OPENSSL_PREFIX/bin/openssl" list -cipher-algorithms | grep -i 'SM4-GCM' \
+            || { echo "::error::该 OpenSSL 未启用 SM4-GCM"; exit 1; }
+
+      # ---------- OpenResty（动态链接到上面的 OpenSSL） ----------
       - name: Cache OpenResty
         id: cache-or
         uses: actions/cache@v4
         with:
           path: /home/runner/opt/openresty
-          key: or-${{ runner.os }}-${{ env.OPENRESTY_VERSION }}-ssl${{ env.OPENSSL_VERSION }}
+          key: or-${{ runner.os }}-${{ env.OPENRESTY_VERSION }}-ssl${{ env.OPENSSL_VERSION }}-shared
 
-      - name: Build OpenResty (dynamically linked to OpenSSL)
+      - name: Build OpenResty
         if: steps.cache-or.outputs.cache-hit != 'true'
         run: |
           set -eux
           mkdir -p "${RUNNER_TEMP}/or-build"
           cd "${RUNNER_TEMP}/or-build"
+
           export PATH="/usr/lib/ccache:$PATH"
           export CCACHE_COMPILERCHECK=content
           export CCACHE_SLOPPINESS=time_macros
@@ -95,7 +119,8 @@ jobs:
           tar -xzf openresty.tar.gz
           cd "openresty-${OPENRESTY_VERSION}"
 
-          # 不再用 --with-openssl；改为 -I/-L 指向已安装的共享库
+          # 不用 --with-openssl（那是静态链接，FFI 够不着）
+          # 改用 -I / -L 指向已安装的共享库，并把 rpath 编进 nginx
           ./configure \
             --prefix="$OPENRESTY_PREFIX" \
             --with-pcre-jit \
@@ -104,22 +129,30 @@ jobs:
             --with-stream \
             --with-stream_ssl_module \
             --with-cc-opt="-I$OPENSSL_PREFIX/include" \
-            --with-ld-opt="-L$OPENSSL_PREFIX/lib -Wl,-rpath,$OPENSSL_PREFIX/lib"
+            --with-ld-opt="-L$OPENSSL_PREFIX/lib -Wl,-rpath,$OPENSSL_PREFIX/lib -Wl,--enable-new-dtags"
+
           make -j"$(nproc)"
           make install
           ccache -s
 
-      - name: Assert OpenSSL linkage
+      - name: Assert OpenResty linkage
         run: |
           set -eux
-          "$OPENRESTY_PREFIX/nginx/sbin/nginx" -V 2>&1 | grep -q "OpenSSL ${OPENSSL_VERSION}" \
+          "$OPENRESTY_PREFIX/nginx/sbin/nginx" -V
+          "$OPENRESTY_PREFIX/nginx/sbin/nginx" -V 2>&1 \
+            | grep -q "OpenSSL ${OPENSSL_VERSION}" \
             || { echo "::error::nginx 未链接 OpenSSL ${OPENSSL_VERSION}"; exit 1; }
-          # 动态链接必须指向我们自己的库，而不是系统的
-          ldd "$OPENRESTY_PREFIX/nginx/sbin/nginx" | grep libcrypto \
+          ldd "$OPENRESTY_PREFIX/nginx/sbin/nginx" | grep -E 'libcrypto|libssl' \
             | grep -q "$OPENSSL_PREFIX" \
-            || { echo "::error::libcrypto 未指向 $OPENSSL_PREFIX"; ldd "$OPENRESTY_PREFIX/nginx/sbin/nginx" | grep -E 'libcrypto|libssl'; exit 1; }
-          "$OPENSSL_PREFIX/bin/openssl" list -cipher-algorithms | grep -i 'SM4-GCM' \
-            || { echo "::error::该 OpenSSL 未启用 SM4-GCM"; exit 1; }
+            || { echo "::error::nginx 的 libcrypto 未指向 $OPENSSL_PREFIX"; \
+                 ldd "$OPENRESTY_PREFIX/nginx/sbin/nginx" | grep -E 'libcrypto|libssl'; exit 1; }
+
+      # ---------- Test::Nginx ----------
+      - name: Cache Perl modules
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/perl5
+          key: perl5-${{ runner.os }}-test-nginx
 
       - name: Install Test::Nginx
         run: |
@@ -131,8 +164,10 @@ jobs:
             > build.log 2>&1 || (cat build.log && exit 1)
           perl -MTest::Nginx::Socket -e1
 
-      - name: Add nginx to PATH
+      # ---------- 运行 ----------
+      - name: Setup runtime env
         run: |
+          set -eux
           echo "$OPENRESTY_PREFIX/nginx/sbin" >> "$GITHUB_PATH"
           echo "LD_LIBRARY_PATH=$OPENSSL_PREFIX/lib" >> "$GITHUB_ENV"
 
