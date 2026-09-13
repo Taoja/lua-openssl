@@ -13,12 +13,13 @@ jobs:
     env:
       OPENSSL_VERSION: "3.6.2"
       OPENSSL_PREFIX: "/usr/local/openssl-3.6.2"
+      OPENRESTY_VERSION: "1.27.1.2"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install build dependencies
         shell: bash
         run: |
           set -eux
@@ -29,11 +30,14 @@ jobs:
             curl \
             git \
             gnupg \
-            lsb-release \
+            libpcre3-dev \
+            libreadline-dev \
+            libssl-dev \
             perl \
-            wget
+            wget \
+            zlib1g-dev
 
-      - name: Install OpenSSL 3.6.2
+      - name: Build and install OpenSSL 3.6.2
         shell: bash
         run: |
           set -eux
@@ -41,40 +45,44 @@ jobs:
           curl -fL "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" -o openssl.tar.gz
           tar -xzf openssl.tar.gz
           cd "openssl-${OPENSSL_VERSION}"
-          export LDFLAGS="-Wl,-rpath,/usr/local/openssl-3.6.2/lib"
-          export CPPFLAGS="-I/usr/local/openssl-3.6.2/include"
-          ./Configure --prefix="${OPENSSL_PREFIX}" --libdir=lib --openssldir="${OPENSSL_PREFIX}/ssl"
+          ./Configure --prefix="${OPENSSL_PREFIX}" --libdir=lib --openssldir="${OPENSSL_PREFIX}/ssl" no-tests
           make -j"$(nproc)"
           sudo make install_sw
-          sudo sh -c 'echo /usr/local/openssl-3.6.2/lib > /etc/ld.so.conf.d/openssl-3.6.2.conf'
-          sudo ldconfig
 
-      - name: Install OpenResty and Test::Nginx dependencies
+      - name: Build and install OpenResty against OpenSSL 3.6.2
         shell: bash
         run: |
           set -eux
+          cd /tmp
+          curl -fL "https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz" -o openresty.tar.gz
+          tar -xzf openresty.tar.gz
+          cd "openresty-${OPENRESTY_VERSION}"
+          ./configure \
+            --prefix=/usr/local/openresty \
+            --with-cc-opt="-I${OPENSSL_PREFIX}/include" \
+            --with-ld-opt="-L${OPENSSL_PREFIX}/lib -Wl,-rpath,${OPENSSL_PREFIX}/lib" \
+            --with-openssl="${OPENSSL_PREFIX}" \
+            --with-openssl-opt="enable-ktls" \
+            --with-pcre-jit \
+            --with-http_ssl_module
+          make -j"$(nproc)"
+          sudo make install
 
-          sudo mkdir -p /usr/share/keyrings
-          curl -fsSL https://openresty.org/package/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/openresty.gpg
-          echo "deb [signed-by=/usr/share/keyrings/openresty.gpg] http://openresty.org/package/ubuntu $(lsb_release -sc) main" \
-            | sudo tee /etc/apt/sources.list.d/openresty.list
-
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            openresty \
-            libtest-nginx-perl
+      - name: Install Test::Nginx dependencies
+        shell: bash
+        run: |
+          set -eux
+          sudo apt-get install -y --no-install-recommends libtest-nginx-perl
 
       - name: Run Test::Nginx suite
         shell: bash
         run: |
           set -eux
-          export PATH="/usr/local/openssl-3.6.2/bin:/usr/local/openresty/bin:/usr/local/openresty/nginx/sbin:${PATH}"
-          export LD_LIBRARY_PATH="/usr/local/openssl-3.6.2/lib:${LD_LIBRARY_PATH:-}"
-          export PKG_CONFIG_PATH="/usr/local/openssl-3.6.2/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-          export OPENSSL_CONF="/usr/local/openssl-3.6.2/ssl/openssl.cnf"
+          export PATH="/usr/local/openresty/bin:/usr/local/openresty/nginx/sbin:${PATH}"
+          export LD_LIBRARY_PATH="${OPENSSL_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+          export PKG_CONFIG_PATH="${OPENSSL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          export OPENSSL_CONF="${OPENSSL_PREFIX}/ssl/openssl.cnf"
 
-          sudo ldconfig
-          ls -l /usr/local/openssl-3.6.2/lib/libssl.so.3 /usr/local/openssl-3.6.2/lib/libcrypto.so.3
-          ldd /usr/local/openssl-3.6.2/bin/openssl || true
+          /usr/local/openresty/nginx/sbin/nginx -V
           /usr/local/openssl-3.6.2/bin/openssl version
           prove -v t/*.t
