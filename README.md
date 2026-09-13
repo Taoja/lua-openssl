@@ -1,12 +1,12 @@
-# lua-openssl
+# lua-resty-gmsm
 
 基于OpenSSL的国密实现
 
 当前支持sm2、sm3、sm4
 
-其中sm4支持ecb、cbc、cfb、ofb、ctr、gcm，并且都只支持pkcs7补位
+其中sm4支持ecb、cbc、cfb、ofb、ctr、gcm(openssl3.3以上)，并且都只支持pkcs7补位
 
-SM2 公钥、私钥和密文的外部输入输出统一使用 Base64 文本格式，不再支持 PEM。
+SM2 公钥、私钥和密文的外部输入输出统一使用ASN.1 der Base64 文本格式，密文固定使用C1C3C2格式。
 
 ## SM2
 
