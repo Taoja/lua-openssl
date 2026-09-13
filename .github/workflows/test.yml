@@ -126,6 +126,9 @@ jobs:
             --with-pcre-jit \
             --with-http_ssl_module \
             --with-http_v2_module \
+            --with-http_realip_module \
+            --with-pcre-jit \
+            --with-luajit \
             --with-stream \
             --with-stream_ssl_module \
             --with-cc-opt="-I$OPENSSL_PREFIX/include" \
