@@ -17,7 +17,8 @@ jobs:
     env:
       OPENSSL_VERSION: "3.6.3"
       OPENRESTY_VERSION: "1.27.1.2"
-      OPENRESTY_PREFIX: "/home/runner/opt/openresty"   # 改到 $HOME，免 sudo
+      OPENSSL_PREFIX: "/home/runner/opt/openssl-3.6.3"   # 新增
+      OPENRESTY_PREFIX: "/home/runner/opt/openresty"
 
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +28,7 @@ jobs:
           set -eux
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential ca-certificates curl perl \
-            cpanminus libipc-run-perl ccache
+            build-essential ca-certificates curl perl cpanminus libipc-run-perl ccache
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -38,22 +38,20 @@ jobs:
           create-symlink: true
           evict-old-files: 'job'
 
-      - name: Cache OpenResty
-        id: cache-openresty
+      # OpenSSL 单独缓存：key 只带 OpenSSL 版本，升 OpenResty 时不重编
+      - name: Cache OpenSSL
+        id: cache-ssl
         uses: actions/cache@v4
         with:
-          path: /home/runner/opt/openresty      # 必须与 OPENRESTY_PREFIX 逐字一致
-          key: openresty-${{ runner.os }}-${{ env.OPENRESTY_VERSION }}-ssl${{ env.OPENSSL_VERSION }}
+          path: /home/runner/opt/openssl-3.6.3
+          key: ssl-${{ runner.os }}-${{ env.OPENSSL_VERSION }}
 
-      - name: Build OpenResty with OpenSSL
-        if: steps.cache-openresty.outputs.cache-hit != 'true'
-        env:
-          BUILD_DIR: ${{ runner.temp }}/or-build
+      - name: Build shared OpenSSL
+        if: steps.cache-ssl.outputs.cache-hit != 'true'
         run: |
           set -eux
-          mkdir -p "$BUILD_DIR"
-          cd "$BUILD_DIR"
-
+          mkdir -p "${RUNNER_TEMP}/ssl-build"
+          cd "${RUNNER_TEMP}/ssl-build"
           export PATH="/usr/lib/ccache:$PATH"
           export CCACHE_COMPILERCHECK=content
           export CCACHE_SLOPPINESS=time_macros
@@ -62,17 +60,42 @@ jobs:
             "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
             -o openssl.tar.gz
           tar -xzf openssl.tar.gz
-          OPENSSL_SRC="$BUILD_DIR/openssl-${OPENSSL_VERSION}"
+          cd "openssl-${OPENSSL_VERSION}"
 
-          test -f "$OPENSSL_SRC/config"  || { echo "::error::OpenSSL 源码不完整"; exit 1; }
-          test -d "$OPENSSL_SRC/include" || { echo "::error::OpenSSL 源码不完整"; exit 1; }
+          # --libdir=lib 强制固定为 lib，避免 x86_64 上落到 lib64 的不确定性
+          ./Configure \
+            --prefix="$OPENSSL_PREFIX" \
+            --openssldir="$OPENSSL_PREFIX/ssl" \
+            --libdir=lib \
+            shared
+          make -j"$(nproc)"
+          make install_sw install_ssldirs
+          "$OPENSSL_PREFIX/bin/openssl" version
+
+      - name: Cache OpenResty
+        id: cache-or
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/opt/openresty
+          key: or-${{ runner.os }}-${{ env.OPENRESTY_VERSION }}-ssl${{ env.OPENSSL_VERSION }}
+
+      - name: Build OpenResty (dynamically linked to OpenSSL)
+        if: steps.cache-or.outputs.cache-hit != 'true'
+        run: |
+          set -eux
+          mkdir -p "${RUNNER_TEMP}/or-build"
+          cd "${RUNNER_TEMP}/or-build"
+          export PATH="/usr/lib/ccache:$PATH"
+          export CCACHE_COMPILERCHECK=content
+          export CCACHE_SLOPPINESS=time_macros
 
           curl -fL --retry 3 --retry-delay 5 \
             "https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz" \
             -o openresty.tar.gz
           tar -xzf openresty.tar.gz
-
           cd "openresty-${OPENRESTY_VERSION}"
+
+          # 不再用 --with-openssl；改为 -I/-L 指向已安装的共享库
           ./configure \
             --prefix="$OPENRESTY_PREFIX" \
             --with-pcre-jit \
@@ -80,8 +103,8 @@ jobs:
             --with-http_v2_module \
             --with-stream \
             --with-stream_ssl_module \
-            --with-openssl="$OPENSSL_SRC" \
-            --with-openssl-opt="no-tests"
+            --with-cc-opt="-I$OPENSSL_PREFIX/include" \
+            --with-ld-opt="-L$OPENSSL_PREFIX/lib -Wl,-rpath,$OPENSSL_PREFIX/lib"
           make -j"$(nproc)"
           make install
           ccache -s
@@ -89,34 +112,29 @@ jobs:
       - name: Assert OpenSSL linkage
         run: |
           set -eux
-          "$OPENRESTY_PREFIX/nginx/sbin/nginx" -V
-          "$OPENRESTY_PREFIX/nginx/sbin/nginx" -V 2>&1 \
-            | grep -q "OpenSSL ${OPENSSL_VERSION}" \
+          "$OPENRESTY_PREFIX/nginx/sbin/nginx" -V 2>&1 | grep -q "OpenSSL ${OPENSSL_VERSION}" \
             || { echo "::error::nginx 未链接 OpenSSL ${OPENSSL_VERSION}"; exit 1; }
-
-      - name: Cache Perl modules
-        uses: actions/cache@v4
-        with:
-          path: ~/perl5
-          key: perl5-${{ runner.os }}-test-nginx
+          # 动态链接必须指向我们自己的库，而不是系统的
+          ldd "$OPENRESTY_PREFIX/nginx/sbin/nginx" | grep libcrypto \
+            | grep -q "$OPENSSL_PREFIX" \
+            || { echo "::error::libcrypto 未指向 $OPENSSL_PREFIX"; ldd "$OPENRESTY_PREFIX/nginx/sbin/nginx" | grep -E 'libcrypto|libssl'; exit 1; }
+          "$OPENSSL_PREFIX/bin/openssl" list -cipher-algorithms | grep -i 'SM4-GCM' \
+            || { echo "::error::该 OpenSSL 未启用 SM4-GCM"; exit 1; }
 
       - name: Install Test::Nginx
         run: |
           set -eux
           PERL_ARCH="$(perl -MConfig -e 'print $Config{archname}')"
           export PERL5LIB="$HOME/perl5/lib/perl5:$HOME/perl5/lib/perl5/$PERL_ARCH"
-          # 供后续 step（prove）使用
           echo "PERL5LIB=$PERL5LIB" >> "$GITHUB_ENV"
-
           cpanm --notest --local-lib="$HOME/perl5" Test::Nginx IPC::Run \
             > build.log 2>&1 || (cat build.log && exit 1)
-
-          # 自检：确认模块真的落在了 PERL5LIB 覆盖的路径下
-          perl -MTest::Nginx::Socket -e 'print "OK $Test::Nginx::Socket::VERSION\n"'
-          perl -MIPC::Run -e 'print "IPC::Run OK\n"'
+          perl -MTest::Nginx::Socket -e1
 
       - name: Add nginx to PATH
-        run: echo "$OPENRESTY_PREFIX/nginx/sbin" >> "$GITHUB_PATH"
+        run: |
+          echo "$OPENRESTY_PREFIX/nginx/sbin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$OPENSSL_PREFIX/lib" >> "$GITHUB_ENV"
 
       - name: Run tests
         run: |
