@@ -16,9 +16,8 @@ jobs:
 
     env:
       OPENSSL_VERSION: "3.6.3"
-      OPENSSL_SOURCE_DIR: "/tmp/openssl-3.6.2"
       OPENRESTY_VERSION: "1.27.1.2"
-      OPENRESTY_PREFIX: "/usr/local/openresty"
+      OPENRESTY_PREFIX: "/home/runner/opt/openresty"   # 改到 $HOME，免 sudo
 
     steps:
       - uses: actions/checkout@v4
@@ -28,20 +27,28 @@ jobs:
           set -eux
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential ca-certificates curl git perl \
-            cpanminus libipc-run-perl
+            build-essential ca-certificates curl perl \
+            cpanminus libipc-run-perl ccache
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-cc-openresty
+          max-size: 1G
+          create-symlink: true
+          evict-old-files: 'job'
 
       - name: Cache OpenResty
         id: cache-openresty
         uses: actions/cache@v4
         with:
-          path: /usr/local/openresty
+          path: /home/runner/opt/openresty      # 必须与 OPENRESTY_PREFIX 逐字一致
           key: openresty-${{ runner.os }}-${{ env.OPENRESTY_VERSION }}-ssl${{ env.OPENSSL_VERSION }}
 
       - name: Build OpenResty with OpenSSL
         if: steps.cache-openresty.outputs.cache-hit != 'true'
         env:
-          BUILD_DIR: ${{ runner.temp }}/or-build        # 唯一路径来源，不再混用 /tmp
+          BUILD_DIR: ${{ runner.temp }}/or-build
         run: |
           set -eux
           mkdir -p "$BUILD_DIR"
@@ -51,16 +58,14 @@ jobs:
           export CCACHE_COMPILERCHECK=content
           export CCACHE_SLOPPINESS=time_macros
 
-          # 下载 OpenSSL 源码（只下源码，不编译、不安装）
           curl -fL --retry 3 --retry-delay 5 \
             "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
             -o openssl.tar.gz
           tar -xzf openssl.tar.gz
           OPENSSL_SRC="$BUILD_DIR/openssl-${OPENSSL_VERSION}"
 
-          # 硬断言：这里失败比 make 里失败好排查一百倍
-          test -f "$OPENSSL_SRC/config"   || { echo "::error::OpenSSL 源码不完整"; exit 1; }
-          test -d "$OPENSSL_SRC/include"  || { echo "::error::OpenSSL 源码不完整"; exit 1; }
+          test -f "$OPENSSL_SRC/config"  || { echo "::error::OpenSSL 源码不完整"; exit 1; }
+          test -d "$OPENSSL_SRC/include" || { echo "::error::OpenSSL 源码不完整"; exit 1; }
 
           curl -fL --retry 3 --retry-delay 5 \
             "https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz" \
@@ -80,7 +85,7 @@ jobs:
           make -j"$(nproc)"
           make install
           ccache -s
-          
+
       - name: Assert OpenSSL linkage
         run: |
           set -eux
@@ -89,22 +94,26 @@ jobs:
             | grep -q "OpenSSL ${OPENSSL_VERSION}" \
             || { echo "::error::nginx 未链接 OpenSSL ${OPENSSL_VERSION}"; exit 1; }
 
+      - name: Cache Perl modules
+        uses: actions/cache@v4
+        with:
+          path: ~/perl5
+          key: perl5-${{ runner.os }}-test-nginx
+
       - name: Install Test::Nginx
         run: |
           set -eux
-          sudo cpanm --notest Test::Nginx IPC::Run > build.log 2>&1 \
-            || (cat build.log && exit 1)
+          cpanm --notest --local-lib=~/perl5 Test::Nginx IPC::Run \
+            > build.log 2>&1 || (cat build.log && exit 1)
+          echo "PERL5LIB=$HOME/perl5/lib/perl5" >> "$GITHUB_ENV"
           perl -MTest::Nginx::Socket -e1
 
       - name: Add nginx to PATH
-        run: echo "$OPENRESTY_PREFIX/nginx/sbin" | sudo tee -a /etc/profile.d/99-openresty.sh
+        run: echo "$OPENRESTY_PREFIX/nginx/sbin" >> "$GITHUB_PATH"
 
       - name: Run tests
-        env:
-          TEST_NGINX_BINARY: /usr/local/openresty/nginx/sbin/nginx
         run: |
           set -eux
-          export PATH="$OPENRESTY_PREFIX/nginx/sbin:$PATH"
           prove -r -v t
 
       - name: Upload error logs
