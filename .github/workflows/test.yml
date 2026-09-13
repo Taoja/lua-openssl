@@ -5,14 +5,20 @@ on:
     branches: [main, master]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
     env:
-      OPENSSL_VERSION: "3.6.2"
-      OPENSSL_PREFIX: "/usr/local/openssl-3.6.2"
+      OPENSSL_VERSION: "3.6.3"
       OPENSSL_SOURCE_DIR: "/tmp/openssl-3.6.2"
       OPENRESTY_VERSION: "1.27.1.2"
+      OPENRESTY_PREFIX: "/usr/local/openresty"
 
     steps:
       - uses: actions/checkout@v4
@@ -22,41 +28,79 @@ jobs:
           set -eux
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential ca-certificates curl git gnupg \
-            libpcre3-dev libreadline-dev libssl-dev perl wget zlib1g-dev
+            build-essential ca-certificates curl git perl \
+            cpanminus libipc-run-perl
 
-      - name: Build OpenSSL 3.6.2
+      - name: Cache OpenResty
+        id: cache-openresty
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/openresty
+          key: openresty-${{ runner.os }}-${{ env.OPENRESTY_VERSION }}-ssl${{ env.OPENSSL_VERSION }}
+
+      - name: Download OpenSSL
+        if: steps.cache-openresty.outputs.cache-hit != 'true'
         run: |
           set -eux
           cd /tmp
-          curl -fL "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" -o openssl.tar.gz
+          curl -fL --retry 3 --retry-delay 5 \
+            "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
+            -o openssl.tar.gz
           tar -xzf openssl.tar.gz
-          cd "${OPENSSL_SOURCE_DIR}"
-          ./Configure
-          make
-          sudo make install
 
-      - name: Build OpenResty
+      - name: Build OpenResty (statically linked OpenSSL)
+        if: steps.cache-openresty.outputs.cache-hit != 'true'
         run: |
           set -eux
           cd /tmp
-          curl -fL "https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz" -o openresty.tar.gz
+          curl -fL --retry 3 --retry-delay 5 \
+            "https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz" \
+            -o openresty.tar.gz
           tar -xzf openresty.tar.gz
           cd "openresty-${OPENRESTY_VERSION}"
           ./configure \
-            --prefix=/usr/local/openresty \
+            --prefix="$OPENRESTY_PREFIX" \
             --with-pcre-jit \
-            --with-http_ssl_module
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --with-http_realip_module \
+            --with-stream \
+            --with-stream_ssl_module \
+            --with-openssl="$OPENSSL_SOURCE_DIR" \
+            -j"$(nproc)"
           make -j"$(nproc)"
           sudo make install
 
-      - name: Install Test::Nginx
-        run: sudo apt-get install -y --no-install-recommends libtest-nginx-perl
-
-      - name: Run tests
+      - name: Assert OpenSSL linkage
         run: |
           set -eux
+          "$OPENRESTY_PREFIX/nginx/sbin/nginx" -V
+          "$OPENRESTY_PREFIX/nginx/sbin/nginx" -V 2>&1 \
+            | grep -q "OpenSSL ${OPENSSL_VERSION}" \
+            || { echo "::error::nginx 未链接 OpenSSL ${OPENSSL_VERSION}"; exit 1; }
 
-          /usr/local/openresty/nginx/sbin/nginx -V
-          /usr/local/openssl-3.6.2/bin/openssl version
-          prove -v t/*.t
+      - name: Install Test::Nginx
+        run: |
+          set -eux
+          sudo cpanm --notest Test::Nginx IPC::Run > build.log 2>&1 \
+            || (cat build.log && exit 1)
+          perl -MTest::Nginx::Socket -e1
+
+      - name: Add nginx to PATH
+        run: echo "$OPENRESTY_PREFIX/nginx/sbin" | sudo tee -a /etc/profile.d/99-openresty.sh
+
+      - name: Run tests
+        env:
+          TEST_NGINX_BINARY: /usr/local/openresty/nginx/sbin/nginx
+        run: |
+          set -eux
+          export PATH="$OPENRESTY_PREFIX/nginx/sbin:$PATH"
+          prove -r -v t
+
+      - name: Upload error logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-error-logs
+          path: t/servroot/logs/
+          if-no-files-found: ignore
