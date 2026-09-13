@@ -103,10 +103,17 @@ jobs:
       - name: Install Test::Nginx
         run: |
           set -eux
-          cpanm --notest --local-lib=~/perl5 Test::Nginx IPC::Run \
+          PERL_ARCH="$(perl -MConfig -e 'print $Config{archname}')"
+          export PERL5LIB="$HOME/perl5/lib/perl5:$HOME/perl5/lib/perl5/$PERL_ARCH"
+          # 供后续 step（prove）使用
+          echo "PERL5LIB=$PERL5LIB" >> "$GITHUB_ENV"
+
+          cpanm --notest --local-lib="$HOME/perl5" Test::Nginx IPC::Run \
             > build.log 2>&1 || (cat build.log && exit 1)
-          echo "PERL5LIB=$HOME/perl5/lib/perl5" >> "$GITHUB_ENV"
-          perl -MTest::Nginx::Socket -e1
+
+          # 自检：确认模块真的落在了 PERL5LIB 覆盖的路径下
+          perl -MTest::Nginx::Socket -e 'print "OK $Test::Nginx::Socket::VERSION\n"'
+          perl -MIPC::Run -e 'print "IPC::Run OK\n"'
 
       - name: Add nginx to PATH
         run: echo "$OPENRESTY_PREFIX/nginx/sbin" >> "$GITHUB_PATH"
