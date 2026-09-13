@@ -13,6 +13,7 @@ jobs:
     env:
       OPENSSL_VERSION: "3.6.2"
       OPENSSL_PREFIX: "/usr/local/openssl-3.6.2"
+      OPENSSL_SOURCE_DIR: "/tmp/openssl-3.6.2"
       OPENRESTY_VERSION: "1.27.1.2"
 
     steps:
@@ -44,7 +45,9 @@ jobs:
           cd /tmp
           curl -fL "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" -o openssl.tar.gz
           tar -xzf openssl.tar.gz
-          cd "openssl-${OPENSSL_VERSION}"
+          rm -rf "${OPENSSL_SOURCE_DIR}"
+          mv "openssl-${OPENSSL_VERSION}" "${OPENSSL_SOURCE_DIR}"
+          cd "${OPENSSL_SOURCE_DIR}"
           ./Configure --prefix="${OPENSSL_PREFIX}" --libdir=lib --openssldir="${OPENSSL_PREFIX}/ssl" no-tests
           make -j"$(nproc)"
           sudo make install_sw
@@ -61,7 +64,7 @@ jobs:
             --prefix=/usr/local/openresty \
             --with-cc-opt="-I${OPENSSL_PREFIX}/include" \
             --with-ld-opt="-L${OPENSSL_PREFIX}/lib -Wl,-rpath,${OPENSSL_PREFIX}/lib" \
-            --with-openssl="${OPENSSL_PREFIX}" \
+            --with-openssl="${OPENSSL_SOURCE_DIR}" \
             --with-openssl-opt="enable-ktls" \
             --with-pcre-jit \
             --with-http_ssl_module
