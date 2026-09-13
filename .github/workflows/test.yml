@@ -44,6 +44,8 @@ jobs:
           ./Configure --prefix="${OPENSSL_PREFIX}" enable-fips --openssldir="${OPENSSL_PREFIX}/ssl"
           make -j"$(nproc)"
           sudo make install_sw
+          sudo sh -c 'echo /usr/local/openssl-3.6.2/lib > /etc/ld.so.conf.d/openssl-3.6.2.conf'
+          sudo ldconfig
 
       - name: Install OpenResty and Test::Nginx dependencies
         shell: bash
@@ -62,11 +64,13 @@ jobs:
 
       - name: Run Test::Nginx suite
         shell: bash
-        env:
-          PATH: "/usr/local/openssl-3.6.2/bin:/usr/local/openresty/bin:/usr/local/openresty/nginx/sbin:${PATH}"
-          LD_LIBRARY_PATH: "/usr/local/openssl-3.6.2/lib:${LD_LIBRARY_PATH:-}"
         run: |
           set -eux
-          openssl version
-          export PATH LD_LIBRARY_PATH
+          export PATH="/usr/local/openssl-3.6.2/bin:/usr/local/openresty/bin:/usr/local/openresty/nginx/sbin:${PATH}"
+          export LD_LIBRARY_PATH="/usr/local/openssl-3.6.2/lib:${LD_LIBRARY_PATH:-}"
+          export PKG_CONFIG_PATH="/usr/local/openssl-3.6.2/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          export OPENSSL_CONF="/usr/local/openssl-3.6.2/ssl/openssl.cnf"
+
+          sudo ldconfig
+          /usr/local/openssl-3.6.2/bin/openssl version
           prove -v t/*.t
