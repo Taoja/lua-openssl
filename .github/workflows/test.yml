@@ -45,8 +45,13 @@ jobs:
           cd /tmp
           curl -fL "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" -o openssl.tar.gz
           tar -xzf openssl.tar.gz
+
+          EXTRACTED_DIR="$(tar -tzf openssl.tar.gz | head -n 1 | cut -d/ -f1)"
+          echo "Extracted OpenSSL dir: ${EXTRACTED_DIR}"
+
           rm -rf "${OPENSSL_SOURCE_DIR}"
-          mv "openssl-${OPENSSL_VERSION}" "${OPENSSL_SOURCE_DIR}"
+          mv "${EXTRACTED_DIR}" "${OPENSSL_SOURCE_DIR}"
+
           cd "${OPENSSL_SOURCE_DIR}"
           ./Configure --prefix="${OPENSSL_PREFIX}" --libdir=lib --openssldir="${OPENSSL_PREFIX}/ssl" no-tests
           make -j"$(nproc)"
