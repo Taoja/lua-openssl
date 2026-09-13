@@ -69,7 +69,7 @@ jobs:
 
           cd "openresty-${OPENRESTY_VERSION}"
           ./configure \
-            --prefix="$OR_PREFIX" \
+            --prefix="$OPENRESTY_PREFIX" \
             --with-pcre-jit \
             --with-http_ssl_module \
             --with-http_v2_module \
