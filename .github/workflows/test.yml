@@ -34,8 +34,7 @@ jobs:
           cd "${OPENSSL_SOURCE_DIR}"
           ./Configure
           make
-          make test
-          make install
+          sudo make install
 
       - name: Build OpenResty
         run: |
