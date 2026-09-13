@@ -2,9 +2,7 @@ name: Test::Nginx
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
   pull_request:
 
 jobs:
@@ -17,48 +15,29 @@ jobs:
       OPENRESTY_VERSION: "1.27.1.2"
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        shell: bash
+      - name: Install build deps
         run: |
           set -eux
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            ca-certificates \
-            curl \
-            git \
-            gnupg \
-            libpcre3-dev \
-            libreadline-dev \
-            libssl-dev \
-            perl \
-            wget \
-            zlib1g-dev
+            build-essential ca-certificates curl git gnupg \
+            libpcre3-dev libreadline-dev libssl-dev perl wget zlib1g-dev
 
-      - name: Build and install OpenSSL 3.6.2
-        shell: bash
+      - name: Build OpenSSL 3.6.2
         run: |
           set -eux
           cd /tmp
           curl -fL "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" -o openssl.tar.gz
           tar -xzf openssl.tar.gz
-
-          EXTRACTED_DIR="$(tar -tzf openssl.tar.gz | head -n 1 | cut -d/ -f1)"
-          echo "Extracted OpenSSL dir: ${EXTRACTED_DIR}"
-
-          rm -rf "${OPENSSL_SOURCE_DIR}"
-          mv "${EXTRACTED_DIR}" "${OPENSSL_SOURCE_DIR}"
-
           cd "${OPENSSL_SOURCE_DIR}"
-          ./Configure --prefix="${OPENSSL_PREFIX}" --libdir=lib --openssldir="${OPENSSL_PREFIX}/ssl" no-tests
-          make -j"$(nproc)"
-          sudo make install_sw
+          ./Configure
+          make
+          make test
+          make install
 
-      - name: Build and install OpenResty against OpenSSL 3.6.2
-        shell: bash
+      - name: Build OpenResty
         run: |
           set -eux
           cd /tmp
@@ -67,29 +46,17 @@ jobs:
           cd "openresty-${OPENRESTY_VERSION}"
           ./configure \
             --prefix=/usr/local/openresty \
-            --with-cc-opt="-I${OPENSSL_PREFIX}/include" \
-            --with-ld-opt="-L${OPENSSL_PREFIX}/lib -Wl,-rpath,${OPENSSL_PREFIX}/lib" \
-            --with-openssl="${OPENSSL_SOURCE_DIR}" \
-            --with-openssl-opt="enable-ktls" \
             --with-pcre-jit \
             --with-http_ssl_module
           make -j"$(nproc)"
           sudo make install
 
-      - name: Install Test::Nginx dependencies
-        shell: bash
-        run: |
-          set -eux
-          sudo apt-get install -y --no-install-recommends libtest-nginx-perl
+      - name: Install Test::Nginx
+        run: sudo apt-get install -y --no-install-recommends libtest-nginx-perl
 
-      - name: Run Test::Nginx suite
-        shell: bash
+      - name: Run tests
         run: |
           set -eux
-          export PATH="/usr/local/openresty/bin:/usr/local/openresty/nginx/sbin:${PATH}"
-          export LD_LIBRARY_PATH="${OPENSSL_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
-          export PKG_CONFIG_PATH="${OPENSSL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-          export OPENSSL_CONF="${OPENSSL_PREFIX}/ssl/openssl.cnf"
 
           /usr/local/openresty/nginx/sbin/nginx -V
           /usr/local/openssl-3.6.2/bin/openssl version
