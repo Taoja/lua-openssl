@@ -1,0 +1,72 @@
+name: Test::Nginx
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      OPENSSL_VERSION: "3.6.2"
+      OPENSSL_PREFIX: "/usr/local/openssl-3.6.2"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            curl \
+            git \
+            gnupg \
+            lsb-release \
+            perl \
+            wget
+
+      - name: Install OpenSSL 3.6.2
+        shell: bash
+        run: |
+          set -eux
+          cd /tmp
+          curl -fL "https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz" -o openssl.tar.gz
+          tar -xzf openssl.tar.gz
+          cd "openssl-${OPENSSL_VERSION}"
+          ./Configure --prefix="${OPENSSL_PREFIX}" enable-fips --openssldir="${OPENSSL_PREFIX}/ssl"
+          make -j"$(nproc)"
+          sudo make install_sw
+
+      - name: Install OpenResty and Test::Nginx dependencies
+        shell: bash
+        run: |
+          set -eux
+
+          sudo mkdir -p /usr/share/keyrings
+          curl -fsSL https://openresty.org/package/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/openresty.gpg
+          echo "deb [signed-by=/usr/share/keyrings/openresty.gpg] http://openresty.org/package/ubuntu $(lsb_release -sc) main" \
+            | sudo tee /etc/apt/sources.list.d/openresty.list
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            openresty \
+            libtest-nginx-perl
+
+      - name: Run Test::Nginx suite
+        shell: bash
+        env:
+          PATH: "/usr/local/openssl-3.6.2/bin:/usr/local/openresty/bin:/usr/local/openresty/nginx/sbin:${PATH}"
+          LD_LIBRARY_PATH: "/usr/local/openssl-3.6.2/lib:${LD_LIBRARY_PATH:-}"
+        run: |
+          set -eux
+          openssl version
+          export PATH LD_LIBRARY_PATH
+          prove -v t/*.t
