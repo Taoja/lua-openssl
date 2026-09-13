@@ -29,7 +29,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential ca-certificates curl perl \
-            cpanminus libipc-run-perl ccache
+            cpanminus libipc-run-perl ccache \
+            libpcre3-dev zlib1g-dev
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
