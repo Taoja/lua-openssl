@@ -54,7 +54,7 @@ int EVP_DigestVerifyInit(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
 int EVP_DigestVerifyUpdate(EVP_MD_CTX *ctx, const void *d, size_t cnt);
 int EVP_DigestVerifyFinal(EVP_MD_CTX *ctx, const unsigned char *sig, size_t siglen);
 int EVP_PKEY_CTX_set1_id(EVP_PKEY_CTX *ctx, const void *id, size_t id_len);
-unsigned long OpenSSL_version_num(void);
+const char *OpenSSL_version(int);
 ]]
 
 local NID_sm2 = ffi.cast("int", 1172)
@@ -63,7 +63,7 @@ local openssl = load_any()
 
 local _M = {
   Version = '1.0.1',
-  Openssl_Version = openssl.OpenSSL_version_num()
+  Openssl_Version = ffi.string(openssl.OpenSSL_version(0))
 }
 _M.__index = _M
 

@@ -37,7 +37,7 @@ qr/^LUA SEES: OpenSSL 3\.6\.3/
                 ngx.say("REQUIRE FAILED: ", tostring(mod))
                 return
             end
-            ngx.say(tostring(mod.Openssl_Version))
+            ngx.say(mod.Openssl_Version)
         }
     }
 --- request
