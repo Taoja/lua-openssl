@@ -16,6 +16,8 @@ GET /t
 LUA SEES: OpenSSL 3
 
 === TEST 2: which openssl version does ffi output
+--- http_config
+    lua_package_path "$prefix/lib/?.lua;$prefix/../../lib/?.lua;;";
 --- config
 location = /t { content_by_lua_block {
   local sm2 = require "resty.gmsm.sm2"
@@ -25,4 +27,4 @@ location = /t { content_by_lua_block {
 --- request
 GET /t
 --- response_body_like
-3.6
+3\.6
