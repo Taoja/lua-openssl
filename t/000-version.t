@@ -24,7 +24,7 @@ __DATA__
 --- request
 GET /t
 --- response_body_like eval
-qr/^LUA SEES: OpenSSL 3\.6\.3/
+LUA SEES: OpenSSL 3\.6\.3/
 
 === TEST 2: which openssl version does ffi output
 --- http_config
@@ -43,4 +43,4 @@ qr/^LUA SEES: OpenSSL 3\.6\.3/
 --- request
 GET /t
 --- response_body_like eval
-qr/^3\.6/
+3\.6/
