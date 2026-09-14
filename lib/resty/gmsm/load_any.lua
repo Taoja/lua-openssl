@@ -68,4 +68,8 @@ local ffi = require("ffi")
 
 -- return load_any
 
-return ffi.C
+local function load_any()
+  return ffi.C
+end
+
+return load_any
