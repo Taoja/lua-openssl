@@ -8,6 +8,68 @@
 
 SM2 公钥、私钥和密文的外部输入输出统一使用ASN.1 der Base64 文本格式，密文固定使用C1C3C2格式。
 
+## 使用方法
+
+推荐安装openSSL3.6+版本，并使用openresty动态链接至openSSL3.6+版本。
+
+### 安装OPENSSL
+
+```bash
+    OPENSSL_VERSION="3.6.3"
+    OPENSSL_PREFIX = "你openssl想要安装的路径"
+
+    curl -fL --retry 3 --retry-delay 5 \
+            "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
+            -o openssl.tar.gz
+    tar -xzf openssl.tar.gz
+    cd "openssl-${OPENSSL_VERSION}"
+    # 关键三点：
+    #   1. shared          —— 必须产出 libcrypto.so，FFI 才能 dlopen
+    #   2. '-Wl,-rpath,$(LIBRPATH)' —— 单引号，让 make 展开；否则 openssl 会链到系统库
+    #   3. --enable-new-dtags        —— 生成 RUNPATH，保证 LD_LIBRARY_PATH 能覆盖
+    ./Configure \
+        --prefix="$OPENSSL_PREFIX" \
+        --openssldir="$OPENSSL_PREFIX/ssl" \
+        --libdir=lib \
+        shared \
+        '-Wl,-rpath,$(LIBRPATH)' \
+        -Wl,--enable-new-dtags
+
+    make -j"$(nproc)"
+    make install_sw install_ssldirs
+```
+
+### 安装OpenResty
+
+```bash
+    OPENSSL_PREFIX = "你openssl想要安装的路径"
+    OPENRESTY_PREFIX = "你Openresty安装路径"
+    OPENRESTY_VERSION = "1.25.2.3"
+
+    curl -fL --retry 3 --retry-delay 5 \
+        "https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz" \
+        -o openresty.tar.gz
+    tar -xzf openresty.tar.gz
+    cd "openresty-${OPENRESTY_VERSION}"
+
+    # 改用 -I / -L 指向已安装的共享库，并把 rpath 编进 nginx
+    ./configure \
+        --prefix="$OPENRESTY_PREFIX" \
+        --with-pcre-jit \
+        --with-http_ssl_module \
+        --with-http_v2_module \
+        --with-http_realip_module \
+        --with-pcre-jit \
+        --with-luajit \
+        --with-stream \
+        --with-stream_ssl_module \
+        --with-cc-opt="-I$OPENSSL_PREFIX/include" \
+        --with-ld-opt="-L$OPENSSL_PREFIX/lib -Wl,-rpath,$OPENSSL_PREFIX/lib -Wl,--enable-new-dtags"
+
+    make -j"$(nproc)"
+    make install
+```
+
 ## SM2
 
 ### 引入

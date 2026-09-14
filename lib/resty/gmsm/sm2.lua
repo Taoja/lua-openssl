@@ -1,5 +1,4 @@
 local ffi = require "ffi"
-local load_any = require("resty.gmsm.load_any")
 local err = require("resty.gmsm.err_print")
 local base64 = require("resty.gmsm.base64")
 
@@ -59,7 +58,7 @@ const char *OpenSSL_version(int);
 
 local NID_sm2 = ffi.cast("int", 1172)
 local EVP_PKEY_SM2 = NID_sm2
-local openssl = load_any()
+local openssl = ffi.C
 
 local _M = {
   Version = '1.0.1',

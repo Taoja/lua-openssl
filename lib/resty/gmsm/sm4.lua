@@ -1,5 +1,4 @@
 local ffi = require "ffi"
-local load_any = require("resty.gmsm.load_any")
 local err = require("resty.gmsm.err_print")
 
 ffi.cdef [[
@@ -50,7 +49,7 @@ int RAND_bytes(unsigned char *buf, int num);
 const char *OpenSSL_version(int);
 ]]
 
-local openssl = load_any()
+local openssl = ffi.C
 
 local _M = {
   Version = '1.0.1',
