@@ -9,7 +9,6 @@ location = /t { content_by_lua_block {
   local ok, lib = pcall(ffi.load, "crypto")
   if not ok then ngx.say("ffi.load failed: ", tostring(lib)); return end
   ngx.say("LUA SEES: ", ffi.string(lib.OpenSSL_version(0)))
-  ngx.say("SM4-GCM: ", tostring(ffi.new("const void*")) ~= nil and "" or "")
 }}
 --- request
 GET /t
@@ -20,7 +19,7 @@ LUA SEES: OpenSSL 3
 --- config
 location = /t { content_by_lua_block {
   local sm2 = require "resty.gmsm.sm2"
-  local version = sm2.openssl_version
+  local version = sm2.Openssl_Version
   ngx.say(version)
 }}
 --- request
