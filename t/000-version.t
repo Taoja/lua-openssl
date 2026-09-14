@@ -23,8 +23,8 @@ __DATA__
     }
 --- request
 GET /t
---- response_body_like
-^LUA SEES: OpenSSL 3\.6\.3
+--- response_body_like eval
+qr/^LUA SEES: OpenSSL 3\.6\.3/
 
 === TEST 2: which openssl version does ffi output
 --- http_config
@@ -37,10 +37,10 @@ GET /t
                 ngx.say("REQUIRE FAILED: ", tostring(mod))
                 return
             end
-            ngx.say(mod.Openssl_Version)
+            ngx.say(tostring(mod.Openssl_Version))
         }
     }
 --- request
 GET /t
---- response_body_like
-^3\.6
+--- response_body_like eval
+qr/^3\.6/
