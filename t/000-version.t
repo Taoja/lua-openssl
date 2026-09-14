@@ -15,3 +15,15 @@ location = /t { content_by_lua_block {
 GET /t
 --- response_body_like
 LUA SEES: OpenSSL 3
+
+=== TEST 2: which openssl version does ffi output
+--- config
+location = /t { content_by_lua_block {
+  local sm2 = require "resty.gmsm.sm2"
+  local version = sm2.openssl_version
+  ngx.say(version)
+}}
+--- request
+GET /t
+--- response_body_like
+3.6
